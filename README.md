@@ -146,3 +146,14 @@ do this) before pointing `convert-hf` at it.
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## How to run Ornith with Hugging Face weights via dspark:
+
+### 1. Download only the config + weight files
+huggingface-cli download <org>/<ornith-model> --local-dir ./ornith-hf --include "*.json" "*.safetensors"
+
+### 2. Quantize straight into dspark's format (no torch/transformers/safetensors needed)
+python -m dspark convert-hf --hf-dir ./ornith-hf --out ornith.dsq --quant int4
+
+### 3. Run it
+python -m dspark run --checkpoint ornith.dsq --prompt "hello" --max-new-tokens 64 --max-resident-layers 2
