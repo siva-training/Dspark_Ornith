@@ -141,19 +141,15 @@ weights, convert it to safetensors first (the `safetensors` library's
 `convert.py` / the Hugging Face Hub's "safetensors" conversion PR bot can
 do this) before pointing `convert-hf` at it.
 
+## Sizing hardware (including GCP) for a given Ornith checkpoint
+
+See [`docs/gcp-sizing.md`](docs/gcp-sizing.md) for RAM/disk/vCPU sizing
+guidance across Ornith model sizes, including concrete GCP machine-type
+recommendations and the memory model (checkpoint size, resident-layer
+footprint, KV cache) they're derived from.
+
 ## Running the tests
 
 ```bash
 python -m unittest discover -s tests -v
 ```
-
-## How to run Ornith with Hugging Face weights via dspark:
-
-### 1. Download only the config + weight files
-huggingface-cli download <org>/<ornith-model> --local-dir ./ornith-hf --include "*.json" "*.safetensors"
-
-### 2. Quantize straight into dspark's format (no torch/transformers/safetensors needed)
-python -m dspark convert-hf --hf-dir ./ornith-hf --out ornith.dsq --quant int4
-
-### 3. Run it
-python -m dspark run --checkpoint ornith.dsq --prompt "hello" --max-new-tokens 64 --max-resident-layers 2
