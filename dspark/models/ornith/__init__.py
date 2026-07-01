@@ -2,6 +2,7 @@ from dspark.registry import register_model_family
 
 from .config import OrnithConfig
 from .convert import convert_source_to_dspark
+from .hf_import import convert_hf_to_dspark
 from .model import OrnithForCausalLM
 
 register_model_family(
@@ -11,4 +12,4 @@ register_model_family(
     converter=convert_source_to_dspark,
 )
 
-__all__ = ["OrnithConfig", "OrnithForCausalLM", "convert_source_to_dspark"]
+__all__ = ["OrnithConfig", "OrnithForCausalLM", "convert_source_to_dspark", "convert_hf_to_dspark"]

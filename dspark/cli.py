@@ -3,6 +3,8 @@
 Subcommands:
   synth-ornith   Write a small synthetic Ornith source checkpoint (fp32).
   convert        Quantize a source checkpoint into dspark's .dsq format.
+  convert-hf     Quantize a Hugging Face Ornith checkpoint directory
+                 (config.json + .safetensors) directly into .dsq.
   run            Load a .dsq checkpoint and greedy-generate text from a prompt.
   inspect        Print size/footprint information about a .dsq checkpoint.
   benchmark      Synthesize + convert an Ornith checkpoint, then compare peak
@@ -17,6 +19,7 @@ import sys
 from .memory_utils import peak_rss_mb
 from .models.ornith.baseline import NaiveOrnithModel
 from .models.ornith.config import PRESETS, preset_config
+from .models.ornith.hf_import import convert_hf_to_dspark
 from .models.ornith.model import DEFAULT_MAX_RESIDENT_LAYERS, OrnithForCausalLM
 from .models.ornith.synthetic import write_synthetic_ornith_checkpoint
 from .models.ornith.tokenizer import ByteTokenizer
@@ -34,6 +37,11 @@ def cmd_convert(args):
     family = get_model_family(args.family)
     out = family.converter(args.src, args.out, quant=args.quant, block_size=args.block_size)
     print(f"wrote {args.family} .dsq checkpoint ({args.quant}) to {out}")
+
+
+def cmd_convert_hf(args):
+    out = convert_hf_to_dspark(args.hf_dir, args.out, quant=args.quant, block_size=args.block_size)
+    print(f"wrote ornith .dsq checkpoint ({args.quant}) to {out}")
 
 
 def cmd_inspect(args):
@@ -187,6 +195,16 @@ def build_parser():
     p.add_argument("--quant", choices=["int8", "int4"], default="int8")
     p.add_argument("--block-size", type=int, default=64)
     p.set_defaults(func=cmd_convert)
+
+    p = sub.add_parser(
+        "convert-hf",
+        help="quantize a Hugging Face Ornith checkpoint directory (config.json + .safetensors) into .dsq",
+    )
+    p.add_argument("--hf-dir", required=True, help="directory containing config.json and .safetensors file(s)")
+    p.add_argument("--out", required=True)
+    p.add_argument("--quant", choices=["int8", "int4"], default="int8")
+    p.add_argument("--block-size", type=int, default=64)
+    p.set_defaults(func=cmd_convert_hf)
 
     p = sub.add_parser("run", help="generate text from a .dsq checkpoint")
     p.add_argument("--checkpoint", required=True)

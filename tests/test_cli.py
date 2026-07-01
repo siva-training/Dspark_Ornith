@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -38,6 +39,51 @@ class TestCliEndToEnd(unittest.TestCase):
         inspect_result = run_cli("inspect", "--checkpoint", dsq_path, "--max-resident-layers", "1", "2")
         self.assertIn("family:", inspect_result.stdout)
         self.assertIn("ornith", inspect_result.stdout)
+
+    def test_convert_hf_end_to_end(self):
+        from tests.test_hf_import import dspark_template_to_hf_name, write_safetensors
+
+        from dspark.models.ornith.config import preset_config
+        from dspark.models.ornith.synthetic import generate_synthetic_ornith_tensors
+
+        config = preset_config("tiny")
+        tensors = generate_synthetic_ornith_tensors(config, seed=5)
+
+        hf_dir = os.path.join(self.tmpdir.name, "hf_ornith")
+        os.makedirs(hf_dir)
+        with open(os.path.join(hf_dir, "config.json"), "w") as f:
+            json.dump(
+                {
+                    "hidden_size": config.hidden_size,
+                    "num_hidden_layers": config.num_layers,
+                    "num_attention_heads": config.num_heads,
+                    "num_key_value_heads": config.num_kv_heads,
+                    "vocab_size": config.vocab_size,
+                    "intermediate_size": config.intermediate_size,
+                    "max_position_embeddings": config.max_position_embeddings,
+                },
+                f,
+            )
+        hf_tensors = {}
+        for name, value in tensors.items():
+            if name.startswith("layers."):
+                layer = int(name.split(".")[1])
+                rest = name.split(".", 2)[2]
+                hf_name = dspark_template_to_hf_name(f"layers.{{i}}.{rest}", layer=layer)
+            else:
+                hf_name = dspark_template_to_hf_name(name)
+            hf_tensors[hf_name] = value
+        write_safetensors(os.path.join(hf_dir, "model.safetensors"), hf_tensors)
+
+        dsq_path = os.path.join(self.tmpdir.name, "from_hf.dsq")
+        run_cli("convert-hf", "--hf-dir", hf_dir, "--out", dsq_path, "--quant", "int4")
+        self.assertTrue(os.path.exists(dsq_path))
+
+        run_result = run_cli(
+            "run", "--checkpoint", dsq_path, "--prompt", "hi", "--max-new-tokens", "4",
+            "--max-resident-layers", "1",
+        )
+        self.assertTrue(len(run_result.stdout) > 0)
 
     def test_benchmark_reports_reduction(self):
         result = run_cli(

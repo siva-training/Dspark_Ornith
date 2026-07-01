@@ -58,6 +58,7 @@ dspark/
     synthetic.py           deterministic synthetic Ornith checkpoints (no
                             pretrained Ornith weights are available here)
     convert.py              source -> quantized .dsq conversion
+    hf_import.py             Hugging Face (config.json + .safetensors) -> .dsq
     model.py                 OrnithForCausalLM: mmap + quantized + streamed
     baseline.py               naive fully-resident fp32 model, for comparison
     tokenizer.py               minimal byte-level tokenizer for demos
@@ -88,6 +89,57 @@ python -m dspark benchmark --preset small --quant int4 --max-resident-layers 2
 fully-resident fp32 model and dspark's streamed/quantized model each in
 their own subprocess, and reports each one's peak resident set size (RSS)
 along with the reduction factor.
+
+## Running a real Ornith checkpoint downloaded from Hugging Face
+
+`convert-hf` reads directly from a Hugging Face checkpoint directory - a
+`config.json` plus one or more `.safetensors` files - and quantizes straight
+into dspark's `.dsq` format. It needs neither `torch`, `transformers`, nor
+the `safetensors` pip package; it parses the (simple, documented) safetensors
+container itself with the standard library.
+
+```bash
+# 1. Download the checkpoint (only config.json + *.safetensors are needed;
+#    skip tokenizer files, .bin/.pt weights, etc.)
+huggingface-cli download <org>/<ornith-model> \
+    --local-dir ./ornith-hf --include "*.json" "*.safetensors"
+
+# 2. Quantize it directly into dspark's format - no fp32 intermediate file,
+#    and no full-precision copy of the model is ever held in memory at once
+python -m dspark convert-hf --hf-dir ./ornith-hf --out ornith.dsq --quant int4
+
+# 3. Run it exactly like any other .dsq checkpoint
+python -m dspark run --checkpoint ornith.dsq --prompt "hello" \
+    --max-new-tokens 64 --max-resident-layers 2
+```
+
+If the checkpoint is sharded (`model-00001-of-0000N.safetensors` +
+`model.safetensors.index.json`), `convert-hf` follows the index
+automatically - just make sure all the shard files are downloaded alongside it.
+
+`convert-hf` assumes the checkpoint's tensors are named the way
+LLaMA/Mistral-family checkpoints on Hugging Face conventionally are
+(`model.embed_tokens.weight`, `model.layers.<i>.self_attn.q_proj.weight`,
+...) and that `config.json` uses the matching field names
+(`num_hidden_layers`, `num_attention_heads`, ...) - see
+`dspark/models/ornith/hf_import.py` for the exact mapping
+(`DEFAULT_HF_NAME_MAP` / `HF_CONFIG_FIELD_MAP`). If a specific Ornith
+release uses different tensor or config field names:
+
+- `convert_hf_to_dspark(..., name_map=my_custom_map)` accepts a
+  replacement tensor name mapping.
+- Missing config fields or tensors raise a clear error naming exactly
+  what was expected and (for tensors) a sample of what was actually found,
+  rather than failing silently or with a shape mismatch deep in the model.
+
+Only the `.safetensors` format is supported, not `pytorch_model.bin` -
+safetensors doesn't require executing arbitrary pickled code to load,
+which matters for checkpoints pulled from the internet, and its simple
+header+blob layout is what makes tensor-at-a-time, low-memory conversion
+possible in the first place. If a checkpoint only ships `.bin`/`.pt`
+weights, convert it to safetensors first (the `safetensors` library's
+`convert.py` / the Hugging Face Hub's "safetensors" conversion PR bot can
+do this) before pointing `convert-hf` at it.
 
 ## Running the tests
 
